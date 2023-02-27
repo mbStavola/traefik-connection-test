@@ -1,0 +1,44 @@
+version: "3.3"
+
+services:
+
+    connection-service-traefik:
+        image: "traefik:v2.9"
+        container_name: "traefik"
+        command:
+          - "--api.insecure=true"
+          - "--providers.docker=true"
+          - "--providers.docker.exposedbydefault=false"
+          - "--entrypoints.web.address=:80"
+        volumes:
+            - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+    connection-service-producer:
+        build:
+            context: ./connection-producer
+        environment:
+            SERVICE_PORT: 80
+            SERVICE_PROXY_HOST: 'traefik'
+            SERVICE_PROXY_PATH: '/tracker'
+        deploy:
+            mode: replicated
+            replicas: 5
+        labels:
+            - "traefik.enable=true"
+            - "traefik.http.services.producer-service.loadbalancer.server.port=80"
+            - "traefik.http.services.producer-service.loadbalancer.healthcheck.path=/"
+            - "traefik.http.services.producer-service.loadbalancer.healthcheck.interval=10s"
+            - "traefik.http.services.producer-service.loadbalancer.healthcheck.timeout=10s"
+
+    connection-service-tracker:
+        build:
+            context: ./connection-tracker
+        environment:
+            SERVICE_PORT: 80
+            SERVICE_LOG_CONNECT: false
+            SERVICE_LOG_DISCONNECT: false
+        labels:
+            - "traefik.enable=true"
+            - "traefik.http.routers.tracker-service.rule=Path(`/tracker`)"
+            - "traefik.http.routers.tracker-service.entrypoints=web"
+            - "traefik.http.services.tracker-service.loadbalancer.server.port=80"
